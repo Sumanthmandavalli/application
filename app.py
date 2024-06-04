@@ -140,7 +140,7 @@ def main():
             with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                 tmp_file.write(uploaded_file.read())
                 video_source = tmp_file.name
-            if st.button("Run Detection"):
+            if st.button("Run"):
                 detect_and_alert(video_source)
                 os.remove(video_source)
         else:
