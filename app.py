@@ -135,7 +135,7 @@ def detect_and_alert(video_path):
         else:
             alert_placeholder.info("Monitoring...")
 
-        # annotated_frame = results[0].plot()
+        annotated_frame = results[0].plot()
         stframe.image(annotated_frame, channels="BGR")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
