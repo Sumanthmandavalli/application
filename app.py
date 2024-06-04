@@ -94,7 +94,7 @@ def detect_and_alert(video_path):
         if not ret:
             break
 
-        results = model(frame)
+        results = model(frame,conf=0.6)
         no_ppe_detected = False
 
         for result in results:
