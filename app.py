@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration, VideoProcessorBase
 import av
+import threading
 
 WORKING_DIR = Path(os.getcwd())
 
@@ -64,18 +65,37 @@ class VideoProcessor(VideoProcessorBase):
         results = self.model(img)
         no_ppe_detected = False
 
+        person_count = 0
+        mask_count = 0
+        hardhat_count = 0
+        safety_vest_count = 0
+
         for result in results:
-            for box in result.boxes:
-                label = self.model.names[int(box.cls)]
-                if label == "NO-Mask" or label == "NO-Hardhat" or label == "NO-Safety-Vest":
-                    no_ppe_detected = True
+            if result.boxes is not None:
+                for box in result.boxes:
+                    label = self.model.names[int(box.cls)]
+                    if label == "Person":
+                        person_count += 1
+                    elif label == "Mask":
+                        mask_count += 1
+                    elif label == "Hardhat":
+                        hardhat_count += 1
+                    elif label == "Safety Vest":
+                        safety_vest_count += 1
 
-        if no_ppe_detected:
-            email_alert("PPE Alert", "A person without PPE has been detected.", "sumanthmandavalli608@gmail.com")
-            phone_number = "918367531279"
-            send_sms_alert("PPE Alert: A person without PPE has been detected.", phone_number)
-
+        unsafe_person_count = person_count - min(mask_count, hardhat_count, safety_vest_count)
+       
         annotated_frame = results[0].plot()
+        cv2.putText(annotated_frame, f'Persons: {person_count}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(annotated_frame, f'Unsafe Persons: {unsafe_person_count}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(annotated_frame, f'Mask: {mask_count}', (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 128, 255), 2)
+        cv2.putText(annotated_frame, f'Hardhat: {hardhat_count}', (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 128, 255), 2)
+        cv2.putText(annotated_frame, f'Safety Vest: {safety_vest_count}', (10, 190), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 128, 255), 2)
+
+        if unsafe_person_count > 0:
+            threading.Thread(target=email_alert, args=("PPE Alert", "A person without PPE has been detected.", "sumanthmandavalli608@gmail.com")).start()
+            phone_number = "918367531279"
+            threading.Thread(target=send_sms_alert, args=("PPE Alert: A person without PPE has been detected.", phone_number)).start()
 
         return av.VideoFrame.from_ndarray(annotated_frame, format="bgr24")
 
@@ -94,7 +114,7 @@ def detect_and_alert(video_path):
         if not ret:
             break
 
-        results = model(frame,classes=[0, 1, 2, 3, 4, 5, 7],conf=0.7)
+        results = model(frame, classes=[0, 1, 2, 3, 4, 5, 7], conf=0.7)
         no_ppe_detected = False
 
         person_count = 0
@@ -106,7 +126,6 @@ def detect_and_alert(video_path):
             if result.boxes is not None:
                 for box in result.boxes:
                     label = result.names[int(box.cls)]
-                    print(label)
                     if label == "Person":
                         person_count += 1
                     elif label == "Mask":
@@ -129,13 +148,12 @@ def detect_and_alert(video_path):
 
         if no_ppe_detected:
             alert_placeholder.error("PPE Alert: A person without PPE has been detected.")
-            email_alert("PPE Alert", "A person without PPE has been detected.", "sumanthmandavalli608@gmail.com")
+            threading.Thread(target=email_alert, args=("PPE Alert", "A person without PPE has been detected.", "sumanthmandavalli608@gmail.com")).start()
             phone_number = "918367531279"
-            send_sms_alert("PPE Alert: A person without PPE has been detected.", phone_number)
+            threading.Thread(target=send_sms_alert, args=("PPE Alert: A person without PPE has been detected.", phone_number)).start()
         else:
             alert_placeholder.info("Monitoring...")
 
-        #annotated_frame = results[0].plot()
         stframe.image(annotated_frame, channels="BGR")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -168,7 +186,7 @@ def main():
                 tmp_file.write(uploaded_file.read())
                 video_source = tmp_file.name
             if st.button("Run Detection"):
-                detect_and_alert(video_source)
+                threading.Thread(target=detect_and_alert, args=(video_source,)).start()
                 os.remove(video_source)
         else:
             st.warning("Please upload a video file.")
